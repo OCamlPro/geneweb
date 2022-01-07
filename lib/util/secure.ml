@@ -63,8 +63,8 @@ let check fname =
     let rec loop = function
       | d :: dl ->
         begin match list_check_prefix d df with
-          | Some bf -> if not (List.mem Filename.parent_dir_name bf) then true else loop dl
-          | None -> loop dl
+          | Some bf when not (List.mem Filename.parent_dir_name bf) -> true
+          | _ -> loop dl
         end
       | [] ->
         if Filename.is_relative fname
