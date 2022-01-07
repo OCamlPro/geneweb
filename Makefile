@@ -85,6 +85,7 @@ GENERATED_FILES_DEP = \
 	bin/gwrepl/.depend \
 	bin/gwu/dune \
 	bin/setup/dune \
+	bin/anonymizer/dune \
 	bin/update_nldb/dune \
 	test/dune \
 

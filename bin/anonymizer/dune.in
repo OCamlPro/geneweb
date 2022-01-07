@@ -1,0 +1,7 @@
+(executable
+  (name anon)
+  (public_name geneweb.anon)
+  (modules main randomizer util)
+  (preprocess (action (run %{bin:cppo} %%%CPPO_D%%% %{input-file})))
+  (libraries unix %%%GWDB_PKG%%% %%%SOSA_PKG%%% geneweb)
+)
