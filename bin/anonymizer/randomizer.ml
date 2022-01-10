@@ -229,13 +229,21 @@ let random_date (d : Adef.cdate) : Adef.cdate =
       Dgreg (d', cal)
     | Dtext _ -> Dtext "unknown"
   with
-    Failure "date_of_cdate" -> d
+    Failure s when s = "date_of_cdate" -> d
 
-let random_loc () = pure_random_name () ^ " Land"
+(* Returns a random location *)
+let random_loc () = pure_random_name () ^ " " ^ pure_random_name () ^ " Land"
 
 let random_death = function
   | Death (dr, d) -> Death (Unspecified, random_date d)
-  | d -> d
+  | _ ->
+    match Random.int 5 with
+    | 0 -> NotDead
+    | 1 -> DeadYoung
+    | 2 -> DeadDontKnowWhen
+    | 3 -> DontKnowIfDead
+    | 4 -> OfCourseDead
+    | _ -> assert false
 
 let random_burial = function
   | UnknownBurial -> UnknownBurial
@@ -244,3 +252,8 @@ let random_burial = function
     if Random.bool ()
     then Buried (random_date d)
     else Cremated (random_date d)
+
+let random_divorce () =
+  if Random.bool ()
+  then NotDivorced
+  else Separated
