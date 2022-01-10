@@ -3,16 +3,27 @@ module D = Gwdb_driver
 let base_name : string ref = ref ""
 let (base : Gwdb_driver.base ref) = ref @@ Obj.magic 0
 
+exception NoBaseNameGiven
+exception BaseDoesNotExist of string
+
+let error_handling exn =
+  match exn with
+  | NoBaseNameGiven -> Format.printf "Error: no base name given@."
+  | BaseDoesNotExist b -> Format.printf "Base %s does not exist@." b;
+  | e -> raise e
 
 let check_base_exists bname =
+  let () =
+    if bname = "" then raise NoBaseNameGiven
+  in
+  let bname = bname ^ ".gwb" in
   if Array.mem bname (Sys.readdir ".")
   then begin
     let b = Gwdb_driver.open_base bname in
     base_name := bname;
     base := b;
   end else begin
-    Format.printf "Base %s does not exist" bname;
-    exit 2;
+    raise (BaseDoesNotExist bname)
   end
 
 let anonymize_fname (istr : D.istr) =
@@ -184,7 +195,6 @@ let anonymize () =
   D.commit_patches !base
 
 let anon_fun bname =
-  let bname = bname ^ ".gwb" in
   check_base_exists bname;
   Random.self_init ();
   anonymize ();
@@ -201,8 +211,10 @@ let arg_usage =
 
 let () =
   let arg_list = [] in
-  Arg.parse
-    arg_list
-    anon_fun
-    arg_usage;
+  try
+    Arg.parse
+      arg_list
+      anon_fun
+      arg_usage;
+    with e -> error_handling e;
   exit 0
