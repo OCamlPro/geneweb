@@ -16,7 +16,7 @@ DISTRIB_DIR=distribution
 BUILD_DIR=_build/default
 ODOC_DIR=$(BUILD_DIR)/_doc/_html
 
-DOC_DIR=static
+DOC_DIR=doc
 
 ###### [BEGIN] Generated files section
 
