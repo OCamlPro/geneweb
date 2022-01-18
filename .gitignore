@@ -42,4 +42,4 @@ lib/gwlib.ml
 hd/etc/version.txt
 *~
 /_opam
-static/doc
+doc/doc
