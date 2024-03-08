@@ -122,23 +122,23 @@ let hashtbl_right_assoc s ht =
     raise Not_found
   with Found x -> x
 
-let index_of_string strings ic start_pos hash_len string_patches string_pending
+let index_of_string strings cf start_pos hash_len string_patches string_pending
     s =
   try hashtbl_right_assoc s string_pending
   with Not_found -> (
     try hashtbl_right_assoc s string_patches
     with Not_found -> (
-      match (ic, hash_len) with
-      | Some ic, Some hash_len ->
+      match (cf, hash_len) with
+      | Some cf, Some hash_len ->
           let ia = Hashtbl.hash s mod hash_len in
-          seek_in ic (start_pos + (ia * Dutil.int_size));
-          let i1 = input_binary_int ic in
+          CachedFile.seek cf (start_pos + (ia * Dutil.int_size));
+          let i1 = CachedFile.read_binary_int cf in
           let rec loop i =
             if i = -1 then raise Not_found
             else if strings.get i = s then i
             else (
-              seek_in ic (start_pos + ((hash_len + i) * Dutil.int_size));
-              loop (input_binary_int ic))
+              CachedFile.seek cf (start_pos + ((hash_len + i) * Dutil.int_size));
+              loop (CachedFile.read_binary_int cf))
           in
           loop i1
       | _ ->
@@ -281,9 +281,9 @@ let new_persons_of_first_name_or_surname cmp_str cmp_istr base_data params =
   let bt =
     lazy
       (let fname_inx = Filename.concat bname names_inx in
-       let ic_inx = Secure.open_in_bin fname_inx in
-       let bt : (int * int) array = input_value ic_inx in
-       close_in ic_inx;
+       let ic_inx = CachedFile.open_ro fname_inx in
+       let bt : (int * int) array = CachedFile.read_value ic_inx in
+       CachedFile.close ic_inx;
        bt)
   in
   (* ordered by string name's ids attached to the patched persons *)
@@ -316,17 +316,17 @@ let new_persons_of_first_name_or_surname cmp_str cmp_istr base_data params =
           if k = istr then 0 else cmp_str base_data s (base_data.strings.get k)
         in
         let pos = snd @@ bt.(binary_search bt cmp) in
-        let ic_dat = Secure.open_in_bin fname_dat in
-        seek_in ic_dat pos;
-        let len = input_binary_int ic_dat in
+        let ic_dat = CachedFile.open_ro fname_dat in
+        CachedFile.seek ic_dat pos;
+        let len = CachedFile.read_binary_int ic_dat in
         let rec read_loop ipera len =
           if len = 0 then ipera
           else
-            let iper = input_binary_int ic_dat in
+            let iper = CachedFile.read_binary_int ic_dat in
             read_loop (iper :: ipera) (len - 1)
         in
         let ipera = read_loop [] len in
-        close_in ic_dat;
+        CachedFile.close ic_dat;
         ipera
       with Not_found -> []
     in
@@ -407,29 +407,29 @@ let persons_of_name bname patches =
   fun s ->
     let i = Dutil.name_index s in
     let ai =
-      let ic_inx = Secure.open_in_bin (Filename.concat bname "names.inx") in
+      let ic_inx = CachedFile.open_ro (Filename.concat bname "names.inx") in
       let ai =
         let fname_inx_acc = Filename.concat bname "names.acc" in
         if Sys.file_exists fname_inx_acc then (
-          let ic_inx_acc = Secure.open_in_bin fname_inx_acc in
-          seek_in ic_inx_acc (Iovalue.sizeof_long * i);
-          let pos = input_binary_int ic_inx_acc in
-          close_in ic_inx_acc;
-          seek_in ic_inx pos;
-          (Iovalue.input ic_inx : int array))
+          let ic_inx_acc = CachedFile.open_ro fname_inx_acc in
+          CachedFile.seek ic_inx_acc (Iovalue.sizeof_long * i);
+          let pos = CachedFile.read_binary_int ic_inx_acc in
+          CachedFile.close ic_inx_acc;
+          CachedFile.seek ic_inx pos;
+          (CachedFile.read_value_gw ic_inx : int array))
         else
           let a =
             match !t with
             | Some a -> a
             | None ->
-                seek_in ic_inx Dutil.int_size;
-                let a : Dutil.name_index_data = input_value ic_inx in
+                CachedFile.seek ic_inx Dutil.int_size;
+                let a : Dutil.name_index_data = CachedFile.read_value ic_inx in
                 t := Some a;
                 a
           in
           a.(i)
       in
-      close_in ic_inx;
+      CachedFile.close ic_inx;
       ai
     in
     match Hashtbl.find_opt patches i with
@@ -496,32 +496,34 @@ let new_strings_of_fsname_aux offset_acc offset_inx split get bname strings
   fun s ->
     let i = Dutil.name_index s in
     let r =
-      let ic_inx = Secure.open_in_bin (Filename.concat bname "names.inx") in
+      let ic_inx = CachedFile.open_ro (Filename.concat bname "names.inx") in
       let ai =
         let fname_inx_acc = Filename.concat bname "names.acc" in
         if Sys.file_exists fname_inx_acc then (
-          let ic_inx_acc = Secure.open_in_bin fname_inx_acc in
-          seek_in ic_inx_acc
+          let ic_inx_acc = CachedFile.open_ro fname_inx_acc in
+          CachedFile.seek ic_inx_acc
             (Iovalue.sizeof_long * ((offset_acc * Dutil.table_size) + i));
-          let pos = input_binary_int ic_inx_acc in
-          close_in ic_inx_acc;
-          seek_in ic_inx pos;
-          (Iovalue.input ic_inx : int array))
+          let pos = CachedFile.read_binary_int ic_inx_acc in
+          CachedFile.close ic_inx_acc;
+          CachedFile.seek ic_inx pos;
+          (CachedFile.read_value_gw ic_inx : int array))
         else
           let a =
             match !t with
             | Some a -> a
             | None ->
-                seek_in ic_inx offset_inx;
-                let pos = input_binary_int ic_inx in
-                seek_in ic_inx pos;
-                let a : Dutil.strings_of_fsname = input_value ic_inx in
+                CachedFile.seek ic_inx offset_inx;
+                let pos = CachedFile.read_binary_int ic_inx in
+                CachedFile.seek ic_inx pos;
+                let a : Dutil.strings_of_fsname =
+                  CachedFile.read_value ic_inx
+                in
                 t := Some a;
                 a
           in
           a.(i)
       in
-      close_in ic_inx;
+      CachedFile.close ic_inx;
       ai
     in
     Hashtbl.fold
@@ -672,7 +674,7 @@ let make_record_exists patches pending len i =
   || Hashtbl.find_opt patches i <> None
   || (i < len && i >= 0)
 
-let make_record_access ic ic_acc shift array_pos (plenr, patches) (_, pending)
+let make_record_access cf cf_acc shift array_pos (plenr, patches) (_, pending)
     len name input_array input_item =
   let tab = ref None in
   let cleared = ref false in
@@ -690,12 +692,12 @@ let make_record_access ic ic_acc shift array_pos (plenr, patches) (_, pending)
                   failwith
                     ("access " ^ name ^ " out of bounds; i = " ^ string_of_int i)
                 else
-                  match ic_acc with
-                  | Some ic_acc ->
-                      seek_in ic_acc (shift + (Iovalue.sizeof_long * i));
-                      let pos = input_binary_int ic_acc in
-                      seek_in ic pos;
-                      input_item ic
+                  match cf_acc with
+                  | Some cf_acc ->
+                      CachedFile.seek cf_acc (shift + (Iovalue.sizeof_long * i));
+                      let pos = CachedFile.read_binary_int cf_acc in
+                      CachedFile.seek cf pos;
+                      input_item cf
                   | None ->
                       Printf.eprintf "Sorry; I really need base.acc\n";
                       flush stderr;
@@ -705,8 +707,8 @@ let make_record_access ic ic_acc shift array_pos (plenr, patches) (_, pending)
     match !tab with
     | Some x -> x
     | None ->
-        seek_in ic array_pos;
-        let t = input_array ic in
+        CachedFile.seek cf array_pos;
+        let t = input_array cf in
         tab := Some t;
         t
   in
@@ -805,6 +807,19 @@ let person_of_key persons strings persons_of_name first_name surname occ =
   in
   find ipl
 
+let check_magic_base magic cf =
+  let len = String.length magic in
+  let pos = CachedFile.pos cf in
+  match CachedFile.read cf len with
+  | exception End_of_file ->
+      CachedFile.seek cf pos;
+      false
+  | s ->
+      if String.equal s magic then true
+      else (
+        CachedFile.seek cf pos;
+        false)
+
 let opendb bname =
   let bname =
     if Filename.check_suffix bname ".gwb" then bname else bname ^ ".gwb"
@@ -831,37 +846,37 @@ let opendb bname =
   let particles =
     Mutil.input_particles (Filename.concat bname "particles.txt")
   in
-  let ic = Secure.open_in_bin (Filename.concat bname "base") in
+  let cf = CachedFile.open_ro (Filename.concat bname "base") in
   let version =
-    if Mutil.check_magic Dutil.magic_GnWb0024 ic then GnWb0024
-    else if Mutil.check_magic Dutil.magic_GnWb0023 ic then GnWb0023
-    else if Mutil.check_magic Dutil.magic_GnWb0022 ic then GnWb0022
-    else if Mutil.check_magic Dutil.magic_GnWb0021 ic then GnWb0021
-    else if Mutil.check_magic Dutil.magic_GnWb0020 ic then GnWb0020
-    else if really_input_string ic 4 = "GnWb" then
+    if check_magic_base Dutil.magic_GnWb0024 cf then GnWb0024
+    else if check_magic_base Dutil.magic_GnWb0023 cf then GnWb0023
+    else if check_magic_base Dutil.magic_GnWb0022 cf then GnWb0022
+    else if check_magic_base Dutil.magic_GnWb0021 cf then GnWb0021
+    else if check_magic_base Dutil.magic_GnWb0020 cf then GnWb0020
+    else if CachedFile.read cf 4 = "GnWb" then
       failwith "this is a GeneWeb base, but not compatible"
     else failwith "this is not a GeneWeb base, or it is a very old version"
   in
-  let persons_len = input_binary_int ic in
-  let families_len = input_binary_int ic in
-  let strings_len = input_binary_int ic in
-  let persons_array_pos = input_binary_int ic in
-  let ascends_array_pos = input_binary_int ic in
-  let unions_array_pos = input_binary_int ic in
-  let families_array_pos = input_binary_int ic in
-  let couples_array_pos = input_binary_int ic in
-  let descends_array_pos = input_binary_int ic in
-  let strings_array_pos = input_binary_int ic in
-  let norigin_file = input_value ic in
-  let ic_acc =
-    try Some (Secure.open_in_bin (Filename.concat bname "base.acc"))
+  let persons_len = CachedFile.read_binary_int cf in
+  let families_len = CachedFile.read_binary_int cf in
+  let strings_len = CachedFile.read_binary_int cf in
+  let persons_array_pos = CachedFile.read_binary_int cf in
+  let ascends_array_pos = CachedFile.read_binary_int cf in
+  let unions_array_pos = CachedFile.read_binary_int cf in
+  let families_array_pos = CachedFile.read_binary_int cf in
+  let couples_array_pos = CachedFile.read_binary_int cf in
+  let descends_array_pos = CachedFile.read_binary_int cf in
+  let strings_array_pos = CachedFile.read_binary_int cf in
+  let norigin_file = CachedFile.read_value_gw cf in
+  let cf_acc =
+    try Some (CachedFile.open_ro (Filename.concat bname "base.acc"))
     with Sys_error _ ->
       Printf.eprintf "File base.acc not found; trying to continue...\n";
       flush stderr;
       None
   in
   let ic2 =
-    try Some (Secure.open_in_bin (Filename.concat bname "strings.inx"))
+    try Some (CachedFile.open_ro (Filename.concat bname "strings.inx"))
     with Sys_error _ ->
       Printf.eprintf "File strings.inx not found; trying to continue...\n";
       flush stderr;
@@ -874,14 +889,16 @@ let opendb bname =
     | GnWb0021 | GnWb0020 -> 3 * Dutil.int_size
   in
   let ic2_string_hash_len =
-    match ic2 with Some ic2 -> Some (input_binary_int ic2) | None -> None
+    match ic2 with
+    | Some ic2 -> Some (CachedFile.read_binary_int ic2)
+    | None -> None
   in
   (if true then
    match ic2 with
    | Some ic2 ->
-       ignore @@ input_binary_int ic2;
+       ignore @@ CachedFile.read_binary_int ic2;
        (* ic2_surname_start_pos *)
-       ignore @@ input_binary_int ic2
+       ignore @@ CachedFile.read_binary_int ic2
        (* ic2_first_name_start_pos *)
    | None -> ());
   let shift = 0 in
@@ -893,57 +910,57 @@ let opendb bname =
       families_len
   in
   let persons =
-    make_record_access ic ic_acc shift persons_array_pos patches.h_person
+    make_record_access cf cf_acc shift persons_array_pos patches.h_person
       pending.h_person persons_len "persons"
-      (input_value : _ -> person array)
-      (Iovalue.input : _ -> person)
+      (CachedFile.read_value : _ -> person array)
+      (CachedFile.read_value_gw : _ -> person)
   in
   let shift = shift + (persons_len * Iovalue.sizeof_long) in
   let ascends =
-    make_record_access ic ic_acc shift ascends_array_pos patches.h_ascend
+    make_record_access cf cf_acc shift ascends_array_pos patches.h_ascend
       pending.h_ascend persons_len "ascends"
-      (input_value : _ -> ascend array)
-      (Iovalue.input : _ -> ascend)
+      (CachedFile.read_value : _ -> ascend array)
+      (CachedFile.read_value_gw : _ -> ascend)
   in
   let shift = shift + (persons_len * Iovalue.sizeof_long) in
   let unions =
-    make_record_access ic ic_acc shift unions_array_pos patches.h_union
+    make_record_access cf cf_acc shift unions_array_pos patches.h_union
       pending.h_union persons_len "unions"
-      (input_value : _ -> union array)
-      (Iovalue.input : _ -> union)
+      (CachedFile.read_value : _ -> union array)
+      (CachedFile.read_value_gw : _ -> union)
   in
   let shift = shift + (persons_len * Iovalue.sizeof_long) in
   let families =
-    make_record_access ic ic_acc shift families_array_pos patches.h_family
+    make_record_access cf cf_acc shift families_array_pos patches.h_family
       pending.h_family families_len "families"
-      (input_value : _ -> family array)
-      (Iovalue.input : _ -> family)
+      (CachedFile.read_value : _ -> family array)
+      (CachedFile.read_value_gw : _ -> family)
   in
   let shift = shift + (families_len * Iovalue.sizeof_long) in
   let couples =
-    make_record_access ic ic_acc shift couples_array_pos patches.h_couple
+    make_record_access cf cf_acc shift couples_array_pos patches.h_couple
       pending.h_couple families_len "couples"
-      (input_value : _ -> couple array)
-      (Iovalue.input : _ -> couple)
+      (CachedFile.read_value : _ -> couple array)
+      (CachedFile.read_value_gw : _ -> couple)
   in
   let shift = shift + (families_len * Iovalue.sizeof_long) in
   let descends =
-    make_record_access ic ic_acc shift descends_array_pos patches.h_descend
+    make_record_access cf cf_acc shift descends_array_pos patches.h_descend
       pending.h_descend families_len "descends"
-      (input_value : _ -> descend array)
-      (Iovalue.input : _ -> descend)
+      (CachedFile.read_value : _ -> descend array)
+      (CachedFile.read_value_gw : _ -> descend)
   in
   let shift = shift + (families_len * Iovalue.sizeof_long) in
   let strings =
-    make_record_access ic ic_acc shift strings_array_pos patches.h_string
+    make_record_access cf cf_acc shift strings_array_pos patches.h_string
       pending.h_string strings_len "strings"
-      (input_value : _ -> string array)
-      (Iovalue.input : _ -> string)
+      (CachedFile.read_value : _ -> string array)
+      (CachedFile.read_value_gw : _ -> string)
   in
   let cleanup () =
-    close_in ic;
-    (match ic_acc with Some ic_acc -> close_in ic_acc | None -> ());
-    match ic2 with Some ic2 -> close_in ic2 | None -> ()
+    CachedFile.close cf;
+    (match cf_acc with Some cf_acc -> CachedFile.close cf_acc | None -> ());
+    match ic2 with Some ic2 -> CachedFile.close ic2 | None -> ()
   in
   let commit_synchro () =
     let tmp_fname = Filename.concat bname "1synchro_patches" in

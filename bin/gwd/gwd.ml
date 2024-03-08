@@ -1485,7 +1485,7 @@ let conf_and_connection =
         | (Def.HttpExn (code, _)) as e ->
           !GWPARAM.output_error conf code ;
           printexc e
-        | e -> printexc e
+        | e -> Printexc.print_backtrace stderr; printexc e
 
 let chop_extension name =
   let rec loop i =
