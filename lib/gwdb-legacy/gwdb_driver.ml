@@ -30,7 +30,9 @@ let spi_next (spi : string_person_index) istr = spi.next istr
 
 type base = dsk_base
 
-let open_base bname : base = Database.opendb bname
+let open_base ?keep_in_memory bname : base =
+  Database.opendb ?keep_in_memory bname
+
 let sou base i = base.data.strings.get i
 let bname base = Filename.(remove_extension @@ basename base.data.bdir)
 let nb_of_persons base = base.data.persons.len

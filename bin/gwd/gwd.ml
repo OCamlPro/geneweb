@@ -1065,7 +1065,7 @@ let string_to_char_list s =
 
 let make_conf from_addr request script_name env =
   if !allowed_tags_file <> "" && not (Sys.file_exists !allowed_tags_file) then (
-    let str = 
+    let str =
      Printf.sprintf
        "Requested allowed_tags file (%s) absent" !allowed_tags_file
     in
@@ -1175,7 +1175,7 @@ let make_conf from_addr request script_name env =
     with Not_found -> false
   in
   let wizard_just_friend = if manitou then false else wizard_just_friend in
-  let private_years = 
+  let private_years =
     try int_of_string (List.assoc "private_years" base_env) with
     Not_found | Failure _ -> 150
   in
@@ -1414,7 +1414,7 @@ let log_and_robot_check conf auth from request script_name contents =
         end;
         log tm conf from auth request script_name contents
       end
-  
+
 let conf_and_connection =
   let slow_query_threshold =
     match Sys.getenv_opt "GWD_SLOW_QUERY_THRESHOLD" with
@@ -2032,6 +2032,10 @@ let main () =
     ; ("-conn_tmout", Arg.Int (fun x -> conn_timeout := x), "<SEC> Connection timeout (default " ^ string_of_int !conn_timeout ^ "s; 0 means no limit)." )
     ; ("-daemon", Arg.Set daemon, " Unix daemon mode.")
 #endif
+    ; ("-cache-in-memory", Arg.String (fun s ->
+        let _db : Gwdb_driver.base = Gwdb.open_base ~keep_in_memory:true s in
+        ()
+      ), "<DATABASE> Preload this database in memory")
     ]
   in
   let speclist = List.sort compare speclist in
