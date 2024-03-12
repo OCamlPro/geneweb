@@ -11,7 +11,7 @@ module StrMap = Map.Make (String)
 let cached = ref StrMap.empty
 
 let open_ro fname : t =
-  let f = Filename.basename fname in
+  let f = Unix.realpath fname in
   match StrMap.find_opt f !cached with
   | Some t ->
       t.offset <- 0;

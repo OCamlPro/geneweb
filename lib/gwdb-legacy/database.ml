@@ -114,6 +114,52 @@ let move_with_backup src dst =
     restrict - defines visibility of each person in the base
 *)
 
+type base_file =
+  | Base
+  | BaseAcc
+  | NamesInx
+  | NamesAcc
+  | StringsInx
+  | SnamesInx
+  | SnamesDat
+  | FnamesInx
+  | FnamesDat
+(* Does not include volatile files *)
+
+let base_file_path bname bfile =
+  let fname =
+    match bfile with
+    | Base -> "base"
+    | BaseAcc -> "base.acc"
+    | NamesInx -> "names.inx"
+    | NamesAcc -> "names.acc"
+    | StringsInx -> "strings.inx"
+    | SnamesInx -> "snames.inx"
+    | SnamesDat -> "snames.dat"
+    | FnamesInx -> "fnames.inx"
+    | FnamesDat -> "fnames.dat"
+  in
+  Filename.concat bname fname
+
+let open_stable bname bfile =
+  let fname = base_file_path bname bfile in
+  CachedFile.open_ro fname
+
+let _base_cache_prefetch bname =
+  List.iter
+    (fun bfile -> ignore @@ open_stable bname bfile)
+    [
+      Base;
+      BaseAcc;
+      NamesInx;
+      NamesAcc;
+      StringsInx;
+      SnamesInx;
+      SnamesDat;
+      FnamesInx;
+      FnamesDat;
+    ]
+
 exception Found of int
 
 let hashtbl_right_assoc s ht =
@@ -158,19 +204,17 @@ let old_persons_of_first_name_or_surname base_data params =
 
     let compare = Dutil.compare_snames_i base_data
   end) in
-  let fname_dat = Filename.concat bname names_dat in
   let bt =
     let btr = ref None in
     fun () ->
       match !btr with
       | Some bt -> bt
       | None ->
-          let fname_inx = Filename.concat bname names_inx in
-          let ic_inx = Secure.open_in_bin fname_inx in
+          let ic_inx = open_stable bname names_inx in
           (*
           let ab1 = Gc.allocated_bytes () in
           *)
-          let bt : int IstrTree.t = input_value ic_inx in
+          let bt : int IstrTree.t = CachedFile.read_value ic_inx in
           (*
           let ab2 = Gc.allocated_bytes () in
           Printf.eprintf "*** new database created by version >= 4.10\n";
@@ -178,7 +222,7 @@ let old_persons_of_first_name_or_surname base_data params =
             names_inx (ab2 -. ab1);
           flush stderr;
           *)
-          close_in ic_inx;
+          CachedFile.close ic_inx;
           btr := Some bt;
           bt
   in
@@ -186,17 +230,17 @@ let old_persons_of_first_name_or_surname base_data params =
     let ipera =
       try
         let pos = IstrTree.find istr (bt ()) in
-        let ic_dat = Secure.open_in_bin fname_dat in
-        seek_in ic_dat pos;
-        let len = input_binary_int ic_dat in
+        let ic_dat = open_stable bname names_dat in
+        CachedFile.seek ic_dat pos;
+        let len = CachedFile.read_binary_int ic_dat in
         let rec read_loop ipera len =
           if len = 0 then ipera
           else
-            let iper = input_binary_int ic_dat in
+            let iper = CachedFile.read_binary_int ic_dat in
             read_loop (iper :: ipera) (len - 1)
         in
         let ipera = read_loop [] len in
-        close_in ic_dat;
+        CachedFile.close ic_dat;
         ipera
       with Not_found -> []
     in
@@ -276,12 +320,10 @@ let binary_search_next arr cmp =
 
 let new_persons_of_first_name_or_surname cmp_str cmp_istr base_data params =
   let proj, person_patches, names_inx, names_dat, bname = params in
-  let fname_dat = Filename.concat bname names_dat in
   (* content of "snames.inx" *)
   let bt =
     lazy
-      (let fname_inx = Filename.concat bname names_inx in
-       let ic_inx = CachedFile.open_ro fname_inx in
+      (let ic_inx = open_stable bname names_inx in
        let bt : (int * int) array = CachedFile.read_value ic_inx in
        CachedFile.close ic_inx;
        bt)
@@ -316,7 +358,7 @@ let new_persons_of_first_name_or_surname cmp_str cmp_istr base_data params =
           if k = istr then 0 else cmp_str base_data s (base_data.strings.get k)
         in
         let pos = snd @@ bt.(binary_search bt cmp) in
-        let ic_dat = CachedFile.open_ro fname_dat in
+        let ic_dat = open_stable bname names_dat in
         CachedFile.seek ic_dat pos;
         let len = CachedFile.read_binary_int ic_dat in
         let rec read_loop ipera len =
@@ -407,11 +449,11 @@ let persons_of_name bname patches =
   fun s ->
     let i = Dutil.name_index s in
     let ai =
-      let ic_inx = CachedFile.open_ro (Filename.concat bname "names.inx") in
+      let ic_inx = open_stable bname NamesInx in
       let ai =
-        let fname_inx_acc = Filename.concat bname "names.acc" in
+        let fname_inx_acc = base_file_path bname NamesAcc in
         if Sys.file_exists fname_inx_acc then (
-          let ic_inx_acc = CachedFile.open_ro fname_inx_acc in
+          let ic_inx_acc = open_stable bname NamesAcc in
           CachedFile.seek ic_inx_acc (Iovalue.sizeof_long * i);
           let pos = CachedFile.read_binary_int ic_inx_acc in
           CachedFile.close ic_inx_acc;
@@ -496,11 +538,11 @@ let new_strings_of_fsname_aux offset_acc offset_inx split get bname strings
   fun s ->
     let i = Dutil.name_index s in
     let r =
-      let ic_inx = CachedFile.open_ro (Filename.concat bname "names.inx") in
+      let ic_inx = open_stable bname NamesInx in
       let ai =
-        let fname_inx_acc = Filename.concat bname "names.acc" in
+        let fname_inx_acc = base_file_path bname NamesAcc in
         if Sys.file_exists fname_inx_acc then (
-          let ic_inx_acc = CachedFile.open_ro fname_inx_acc in
+          let ic_inx_acc = open_stable bname NamesAcc in
           CachedFile.seek ic_inx_acc
             (Iovalue.sizeof_long * ((offset_acc * Dutil.table_size) + i));
           let pos = CachedFile.read_binary_int ic_inx_acc in
@@ -846,7 +888,7 @@ let opendb bname =
   let particles =
     Mutil.input_particles (Filename.concat bname "particles.txt")
   in
-  let cf = CachedFile.open_ro (Filename.concat bname "base") in
+  let cf = open_stable bname Base in
   let version =
     if check_magic_base Dutil.magic_GnWb0024 cf then GnWb0024
     else if check_magic_base Dutil.magic_GnWb0023 cf then GnWb0023
@@ -869,14 +911,14 @@ let opendb bname =
   let strings_array_pos = CachedFile.read_binary_int cf in
   let norigin_file = CachedFile.read_value_gw cf in
   let cf_acc =
-    try Some (CachedFile.open_ro (Filename.concat bname "base.acc"))
+    try Some (open_stable bname BaseAcc)
     with Sys_error _ ->
       Printf.eprintf "File base.acc not found; trying to continue...\n";
       flush stderr;
       None
   in
   let ic2 =
-    try Some (CachedFile.open_ro (Filename.concat bname "strings.inx"))
+    try Some (open_stable bname StringsInx)
     with Sys_error _ ->
       Printf.eprintf "File strings.inx not found; trying to continue...\n";
       flush stderr;
@@ -1202,15 +1244,15 @@ let opendb bname =
         persons_of_surname version base_data
           ( (fun p -> p.surname),
             snd patches.h_person,
-            "snames.inx",
-            "snames.dat",
+            SnamesInx,
+            SnamesDat,
             bname );
       persons_of_first_name =
         persons_of_first_name version base_data
           ( (fun p -> p.first_name),
             snd patches.h_person,
-            "fnames.inx",
-            "fnames.dat",
+            FnamesInx,
+            FnamesDat,
             bname );
       patch_person;
       patch_ascend;
