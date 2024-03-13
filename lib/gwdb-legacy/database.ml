@@ -145,7 +145,7 @@ let open_stable bname bfile =
   let fname = base_file_path bname bfile in
   CachedFile.open_ro fname
 
-let _base_cache_prefetch bname =
+let base_cache_prefetch bname =
   List.iter
     (fun bfile -> ignore @@ open_stable bname bfile)
     [
@@ -862,10 +862,11 @@ let check_magic_base magic cf =
         CachedFile.seek cf pos;
         false)
 
-let opendb bname =
+let opendb ?(keep_in_memory = false) bname =
   let bname =
     if Filename.check_suffix bname ".gwb" then bname else bname ^ ".gwb"
   in
+  if keep_in_memory then base_cache_prefetch bname;
   let tm_fname = Filename.concat bname "commit_timestamp" in
   let patches = input_patches bname in
   let pending : patches_ht = empty_patch_ht () in
