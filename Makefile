@@ -66,7 +66,7 @@ hd/etc/version.txt:
 GENERATED_FILES_DEP = \
 	dune-workspace \
 	hd/etc/version.txt \
-	lib/dune \
+	lib/geneweb/dune \
 	lib/gwdb/dune \
 	lib/core/dune \
 	lib/gwlib.ml \

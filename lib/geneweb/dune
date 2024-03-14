@@ -1,0 +1,21 @@
+(dirs :standard \ sosa_array sosa_num)
+
+(ocamllex (modules templ_parser))
+
+(library
+ (name geneweb)
+ (public_name geneweb)
+ (synopsis "GeneWeb library")
+ (preprocess (action (run %{bin:cppo} -D GENEWEB_GWDB_LEGACY -D UNIX  -V OCAML:%{ocaml_version} %{input-file})))
+ (libraries unix
+            str
+            stdlib-shims
+            camlp5
+            geneweb_core
+            geneweb_def
+            geneweb_gwdb
+            geneweb_sosa_mli
+            geneweb_util
+            markup)
+ (modules_without_implementation templAst)
+)
