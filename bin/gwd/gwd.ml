@@ -1485,7 +1485,7 @@ let conf_and_connection =
         | (Def.HttpExn (code, _)) as e ->
           !GWPARAM.output_error conf code ;
           printexc e
-        | e -> printexc e
+        | e -> Printexc.print_backtrace stderr; printexc e
 
 let chop_extension name =
   let rec loop i =
@@ -2032,6 +2032,10 @@ let main () =
     ; ("-conn_tmout", Arg.Int (fun x -> conn_timeout := x), "<SEC> Connection timeout (default " ^ string_of_int !conn_timeout ^ "s; 0 means no limit)." )
     ; ("-daemon", Arg.Set daemon, " Unix daemon mode.")
 #endif
+    ; ("-cache-in-memory", Arg.String (fun s ->
+        let _db : Gwdb_driver.base = Gwdb.open_base ~keep_in_memory:true s in
+        ()
+      ), "<DATABASE> Preload this database in memory")
     ]
   in
   let speclist = List.sort compare speclist in
