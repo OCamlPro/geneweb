@@ -45,11 +45,7 @@ let get_bytes t size =
   check_end t size;
   let off = t.offset in
   t.offset <- t.offset + size;
-  Bytes.create size |> Bytes.mapi (fun i _ -> Array1.get t.filea (off + i))
-
-let store_bytes t buf pos len =
-  let b' = get_bytes t len in
-  Bytes.blit b' 0 buf pos len
+  Bytes.init size (fun i -> Array1.get t.filea (off + i))
 
 let read t size : string = get_bytes t size |> String.of_bytes
 
@@ -57,6 +53,11 @@ let read_binary_int t : int =
   check_end t 4;
   let b = get_bytes t 4 in
   Bytes.get_int32_be b 0 |> Int32.to_int
+
+let read_binary_int64 t : int =
+  check_end t 8;
+  let b = get_bytes t 8 in
+  Bytes.get_int64_be b 0 |> Int64.to_int
 
 let read_value t : 'a =
   let h = get_bytes t Marshal.header_size in
@@ -84,78 +85,50 @@ let code_BLOCK64 = 0x13
 let code_STRING8 = 0x9
 let code_STRING32 = 0xA
 
-type 'a in_funs = {
-  input_byte : 'a -> int;
-  input_binary_int : 'a -> int;
-  input : 'a -> bytes -> int -> int -> unit;
-}
-
-let input_binary_int64 ifuns ic =
-  let rec loop cnt n =
-    if cnt = 0 then n else loop (cnt - 1) ((n lsl 8) + ifuns.input_byte ic)
-  in
-  loop 8 0
-
-let rec input_loop ifuns ic =
-  let code = ifuns.input_byte ic in
+let rec input_loop ic =
+  let code = get_byte ic in
   if code >= prefix_SMALL_INT then
     if code >= prefix_SMALL_BLOCK then
-      input_block ifuns ic (code land 0xf) ((code lsr 4) land 0x7)
-    else Obj.magic (code land 0x3f)
-  else if code >= prefix_SMALL_STRING then (
+      input_block ic (code land 0xf) ((code lsr 4) land 0x7)
+    else Obj.repr (code land 0x3f)
+  else if code >= prefix_SMALL_STRING then
     let len = code land 0x1F in
-    let s = Bytes.create len in
-    ifuns.input ic s 0 len;
-    Obj.magic s)
-  else if code = code_INT8 then Obj.magic (sign_extend (ifuns.input_byte ic))
+    let (s : bytes) = get_bytes ic len in
+    Obj.repr s
+  else if code = code_INT8 then Obj.repr (sign_extend (get_byte ic))
   else if code = code_INT16 then
-    let h = ifuns.input_byte ic in
-    Obj.magic ((sign_extend h lsl 8) + ifuns.input_byte ic)
-  else if code = code_INT32 then
-    let x1 = ifuns.input_byte ic in
-    let x2 = ifuns.input_byte ic in
-    let x3 = ifuns.input_byte ic in
-    let x4 = ifuns.input_byte ic in
-    Obj.magic ((sign_extend x1 lsl 24) + (x2 lsl 16) + (x3 lsl 8) + x4)
+    let h = get_bytes ic 2 in
+    Obj.repr (Bytes.get_int16_be h 0)
+  else if code = code_INT32 then Obj.repr @@ read_binary_int ic
   else if code = code_INT64 then
     let () = assert (Sys.word_size = 64) in
-    Obj.magic (input_binary_int64 ifuns ic)
+    Obj.repr (read_binary_int64 ic)
   else if code = code_BLOCK32 then
-    let header = ifuns.input_binary_int ic in
-    Obj.magic (input_block ifuns ic (header land 0xff) (header lsr 10))
+    let header = read_binary_int ic in
+    input_block ic (header land 0xff) (header lsr 10)
   else if code = code_BLOCK64 then
     if Sys.word_size = 64 then
-      let header = input_binary_int64 ifuns ic in
-      Obj.magic (input_block ifuns ic (header land 0xff) (header lsr 10))
+      let header = read_binary_int64 ic in
+      input_block ic (header land 0xff) (header lsr 10)
     else failwith "input bad code block 64"
-  else if code = code_STRING8 then (
-    let len = ifuns.input_byte ic in
-    let s = Bytes.create len in
-    ifuns.input ic s 0 len;
-    Obj.magic s)
-  else if code = code_STRING32 then (
-    let len = ifuns.input_binary_int ic in
-    let s = Bytes.create len in
-    ifuns.input ic s 0 len;
-    Obj.magic s)
+  else if code = code_STRING8 then
+    let len = get_byte ic in
+    let (s : bytes) = get_bytes ic len in
+    Obj.repr s
+  else if code = code_STRING32 then
+    let len = read_binary_int ic in
+    let (s : bytes) = get_bytes ic len in
+    Obj.repr s
   else failwith (Printf.sprintf "input bad code 0x%x" code)
 
-and input_block ifuns ic tag size =
+and input_block ic tag size =
   let v =
-    if tag = 0 then Obj.magic (Array.make size (Obj.magic 0))
-    else Obj.new_block tag size
+    if tag = 0 then Obj.repr (Array.make size 0) else Obj.new_block tag size
   in
   for i = 0 to size - 1 do
-    let x = input_loop ifuns ic in
-    Obj.set_field v i (Obj.magic x)
+    let x = input_loop ic in
+    Obj.set_field v i x
   done;
   v
 
-let in_channel_funs =
-  {
-    input_byte = get_byte;
-    input_binary_int = read_binary_int;
-    input = store_bytes;
-  }
-
-let read_value_gw t : 'a = Obj.magic @@ input_loop in_channel_funs t
+let read_value_gw t : 'a = Obj.obj @@ input_loop t
